@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+version = '1.0 (2017-10-04)'
+
+# Handle broken pipes:
+from signal import signal, SIGPIPE, SIG_DFL
+signal(SIGPIPE, SIG_DFL) 
+
+from sys import stdin, stderr, exit
+import argparse
+import re
+parser = argparse.ArgumentParser(description='Reformat featureCounts output files')
+parser.add_argument('-v', '--version', action='version', version='%(prog)s {0}'.format(version))
+parser.add_argument('-s', '--header-suffix', dest='header_suffix', default='.bam', help='header suffix to remove')
+parser.add_argument('-r', '--clean-rows', dest='clean_rows', action='store_true', default=False, help='trim accession version data from row IDs')
+parser.add_argument(dest='input_file', metavar='<file>', type=argparse.FileType('rt'), default=stdin, help='input featureCounts file')
+args = parser.parse_args()
+
+try: header_re = re.compile('(.*){}'.format(args.header_suffix))
+except:
+    print('ERROR: invalid header regular expression: "{}"'.format(args.header_regex), file=stderr)
+    exit(1)
+    
+id_re = re.compile('(\S+)(?:\\.\S+)')
+
+# First, read through all the header lines:
+while True:
+    line = args.input_file.readline()
+    if not line.startswith('#'): break
+
+# line is now the header:
+headers = []
+for i in line.strip().split('\t')[6:]:
+    header = i.split('/')[-1]
+    match = header_re.match(header)
+    if match is None: headers.append(header)
+    else: headers.append(match.group(1))
+
+# Print the trimmed  header line:
+print('id\t{}'.format('\t'.join(headers)))
+
+# Print out the remaining (data) lines:
+for line in args.input_file.readlines():
+    output = []
+    line_data = line.strip().split('\t')
+    if args.clean_rows is True:
+        match = id_re.match(line_data[0])
+        if match is None: output.append(line_data[0])
+        else: output.append(match.group(1))
+    else: output.append(line_data[0])
+    output.extend(line_data[6:])
+    print('\t'.join(output))
